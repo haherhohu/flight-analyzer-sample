@@ -121,16 +121,16 @@ class FlightAnalyzer:
         Returns:
             비행 단계
         """
-        if altitude < 1000:
+        if altitude < 500:
+            return "APPROACH/LANDING"
+        elif altitude < 1000:
             return "TAXI/TAKEOFF"
+        elif altitude < 3000 and speed < 400:
+            return "DESCENT"
         elif altitude < 3000:
             return "CLIMB"
         elif altitude < 10000 and speed > 500:
             return "CRUISE"
-        elif altitude < 3000 and speed < 400:
-            return "DESCENT"
-        elif altitude < 500:
-            return "APPROACH/LANDING"
         else:
             return "UNKNOWN"
     

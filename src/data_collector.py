@@ -7,7 +7,7 @@ Flight Data Collector Module
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import random
 
@@ -37,7 +37,7 @@ class FlightDataCollector:
         """
         try:
             data = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "aircraft_id": self.aircraft_id,
                 "altitude": self._read_altitude(),
                 "speed": self._read_speed(),
