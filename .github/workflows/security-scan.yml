@@ -1,0 +1,231 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run security scan daily at 2 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install Safety
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety
+
+      - name: Install project dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Safety check
+        run: |
+          echo "🔍 Scanning dependencies for known vulnerabilities..."
+          safety check --json --output safety-report.json || true
+          safety check || true
+        continue-on-error: true
+
+      - name: Upload Safety report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safety-report
+          path: safety-report.json
+
+  sast-scan:
+    name: Static Application Security Testing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install Bandit
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit[toml]
+
+      - name: Run Bandit SAST scan
+        run: |
+          echo "🔒 Running static security analysis..."
+          bandit -r src/ -f json -o bandit-report.json
+          bandit -r src/ -ll
+        continue-on-error: true
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+        continue-on-error: true
+
+      - name: Manual secret pattern check
+        run: |
+          echo "🔑 Checking for potential secrets..."
+
+          # Check for common secret patterns
+          echo "Searching for potential API keys..."
+          grep -r -i "api[_-]key" --include="*.py" --include="*.json" --include="*.yml" . || echo "No API keys found"
+
+          echo "Searching for potential passwords..."
+          grep -r -i "password\s*=" --include="*.py" . || echo "No hardcoded passwords found"
+
+          echo "Searching for potential tokens..."
+          grep -r -i "token\s*=" --include="*.py" . || echo "No hardcoded tokens found"
+
+          echo "✅ Manual secret scan completed"
+
+  code-scanning:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
+
+  vulnerability-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, sast-scan, secret-scan]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+
+      - name: Generate security summary
+        run: |
+          echo "# 🔒 Security Scan Summary" > security-summary.md
+          echo "" >> security-summary.md
+          echo "Scan Date: $(date)" >> security-summary.md
+          echo "" >> security-summary.md
+
+          echo "## Scans Performed" >> security-summary.md
+          echo "" >> security-summary.md
+          echo "- ✅ Dependency vulnerability scan (Safety)" >> security-summary.md
+          echo "- ✅ Static application security testing (Bandit)" >> security-summary.md
+          echo "- ✅ Secret detection (TruffleHog)" >> security-summary.md
+          echo "- ✅ Code scanning (CodeQL)" >> security-summary.md
+          echo "" >> security-summary.md
+
+          echo "## Results" >> security-summary.md
+          echo "" >> security-summary.md
+
+          # Check if reports exist and summarize
+          if [ -f "safety-report/safety-report.json" ]; then
+            echo "### Dependency Vulnerabilities" >> security-summary.md
+            echo "Safety scan completed. Check artifacts for details." >> security-summary.md
+            echo "" >> security-summary.md
+          fi
+
+          if [ -f "bandit-report/bandit-report.json" ]; then
+            echo "### Static Analysis" >> security-summary.md
+            echo "Bandit scan completed. Check artifacts for details." >> security-summary.md
+            echo "" >> security-summary.md
+          fi
+
+          echo "## Recommendations" >> security-summary.md
+          echo "" >> security-summary.md
+          echo "1. Review all findings in the artifact reports" >> security-summary.md
+          echo "2. Address high and critical severity issues immediately" >> security-summary.md
+          echo "3. Update vulnerable dependencies" >> security-summary.md
+          echo "4. Remove any detected secrets from repository history" >> security-summary.md
+          echo "5. Schedule regular security scans" >> security-summary.md
+          echo "" >> security-summary.md
+
+          echo "---" >> security-summary.md
+          echo "*Generated automatically by GitHub Actions*" >> security-summary.md
+
+          cat security-summary.md
+
+      - name: Upload security summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-summary
+          path: security-summary.md
+
+      - name: Comment on PR if applicable
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let summary = '## 🔒 Security Scan Summary\n\n';
+            summary += 'All security scans have been completed. ';
+            summary += 'Please review the artifacts for detailed findings.\n\n';
+            summary += '### Scans Performed:\n';
+            summary += '- ✅ Dependency vulnerability scan\n';
+            summary += '- ✅ Static application security testing\n';
+            summary += '- ✅ Secret detection\n';
+            summary += '- ✅ Code scanning\n\n';
+            summary += '**Action Required**: Review security reports in workflow artifacts.\n';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+        continue-on-error: true

@@ -1,0 +1,31 @@
+# Python 의존성
+
+# 웹 프레임워크
+Flask==3.0.0
+flask-cors==4.0.0
+
+# 데이터 처리
+numpy==1.26.2
+pandas==2.1.4
+
+# 테스팅
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# 코드 품질
+pylint==3.0.3
+flake8==7.0.0
+black==23.12.1
+mypy==1.8.0
+
+# 보안
+bandit==1.7.6
+safety==3.0.1
+
+# 문서화
+sphinx==7.2.6
+
+# 기타
+python-dotenv==1.0.0
+requests==2.31.0
