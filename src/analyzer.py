@@ -243,6 +243,49 @@ class FlightAnalyzer:
     def get_all_anomalies(self) -> List[Dict]:
         """모든 탐지된 이상 패턴 반환"""
         return self.anomalies.copy()
+    
+    def predict_remaining_flight_time(self, data_list: List[Dict]) -> Dict:
+        """
+        현재 연료 소비율을 기반으로 잔여 비행 시간 예측
+        
+        Args:
+            data_list: 분석할 데이터 리스트
+            
+        Returns:
+            예측 결과 딕셔너리 (remaining_hours, fuel_exhaustion_warning)
+        """
+        if not data_list or len(data_list) < 2:
+            return {
+                'remaining_hours': None,
+                'fuel_exhaustion_warning': False,
+                'message': 'Insufficient data for prediction'
+            }
+        
+        # 현재 평균 연료량
+        current_fuel = sum(d['fuel_level'] for d in data_list) / len(data_list)
+        
+        # 연료 소비율 계산
+        fuel_consumption_rate = self._calculate_fuel_consumption(data_list)
+        
+        # 잔여 비행 시간 계산
+        if fuel_consumption_rate > 0:
+            remaining_hours = current_fuel / fuel_consumption_rate
+        else:
+            remaining_hours = float('inf')  # 연료 소비가 없는 경우
+        
+        # 경고 판단 (2시간 미만 또는 연료 20% 미만)
+        fuel_exhaustion_warning = remaining_hours < 2.0 or current_fuel < 20.0
+        
+        prediction = {
+            'remaining_hours': round(remaining_hours, 2) if remaining_hours != float('inf') else None,
+            'current_fuel_percentage': round(current_fuel, 2),
+            'fuel_consumption_rate': round(fuel_consumption_rate, 2),
+            'fuel_exhaustion_warning': fuel_exhaustion_warning,
+            'message': 'Critical: Low fuel!' if fuel_exhaustion_warning else 'Fuel level normal'
+        }
+        
+        logger.info(f"Fuel prediction: {prediction}")
+        return prediction
 
 
 def main():

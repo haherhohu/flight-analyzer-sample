@@ -217,6 +217,49 @@ class TestFlightAnalyzer:
         
         anomalies = self.analyzer.get_all_anomalies()
         assert len(anomalies) == 2
+    
+    def test_predict_remaining_flight_time_normal(self):
+        """정상 연료 잔여 시간 예측 테스트"""
+        # 충분한 연료가 있는 상황 (느린 소비율)
+        data_list = []
+        for i in range(10):
+            data = self.normal_data.copy()
+            data['fuel_level'] = 80.0 - i * 0.1  # 매우 느리게 감소
+            data['timestamp'] = f"2026-01-19T10:{i:02d}:00"
+            data_list.append(data)
+        
+        prediction = self.analyzer.predict_remaining_flight_time(data_list)
+        
+        assert 'remaining_hours' in prediction
+        assert 'current_fuel_percentage' in prediction
+        assert 'fuel_consumption_rate' in prediction
+        assert 'fuel_exhaustion_warning' in prediction
+        # 충분한 연료와 느린 소비율이므로 경고 없음
+        assert prediction['fuel_exhaustion_warning'] is False or prediction['remaining_hours'] > 2
+    
+    def test_predict_remaining_flight_time_warning(self):
+        """연료 부족 경고 예측 테스트"""
+        # 연료가 부족한 상황
+        data_list = []
+        for i in range(10):
+            data = self.normal_data.copy()
+            data['fuel_level'] = 25.0 - i * 2  # 빠르게 감소
+            data['timestamp'] = f"2026-01-19T10:{i:02d}:00"
+            data_list.append(data)
+        
+        prediction = self.analyzer.predict_remaining_flight_time(data_list)
+        
+        assert prediction['fuel_exhaustion_warning'] is True
+        assert 'Critical' in prediction['message']
+    
+    def test_predict_remaining_flight_time_insufficient_data(self):
+        """데이터 부족 시 예측 테스트"""
+        data_list = [self.normal_data.copy()]
+        
+        prediction = self.analyzer.predict_remaining_flight_time(data_list)
+        
+        assert prediction['remaining_hours'] is None
+        assert 'Insufficient data' in prediction['message']
 
 
 if __name__ == "__main__":
